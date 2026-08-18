@@ -3,8 +3,8 @@ import json
 import re
 import os
 
-# Configure Gemini API (use environment variable in production)
-genai.configure(api_key="AIzaSyBmykQWa9xHkqdEnwPutE3eKtZXbCN7lrk")
+# Configure Gemini API
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 model = genai.GenerativeModel("gemini-2.5-flash")
 
