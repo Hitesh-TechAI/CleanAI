@@ -1,7 +1,7 @@
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+const BACKEND_URL = "https://cleanai-1-lmjm.onrender.com" || "http://127.0.0.1:8000";
 
 const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
