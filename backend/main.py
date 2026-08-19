@@ -16,6 +16,7 @@ app.add_middleware(
         "http://localhost:8080",
         "http://127.0.0.1:8080",
         "http://192.168.43.185:8080",
+        "https://clean-ai-seven.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
