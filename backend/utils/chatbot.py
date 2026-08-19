@@ -1,25 +1,27 @@
-import google.generativeai as genai
+from groq import Groq
 import json
-import re
 import os
 
-# Configure Gemini API (use environment variable in production)
-genai.configure(api_key="AIzaSyBmykQWa9xHkqdEnwPutE3eKtZXbCN7lrk")
 
-model = genai.GenerativeModel("gemini-2.5-flash")
+# Configure Groq API
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
+
+MODEL = "openai/gpt-oss-120b"
 
 
-def call_gemini(user_message, metadata, chat_history, pending_action=None):
+def call_ai(user_message, metadata, chat_history, pending_action=None):
     """
-    Stable Gemini Caller
+    CleanAI GPT-OSS 120B Caller
     - Lightweight metadata
     - Limited chat history
-    - No streaming
-    - Regex JSON extraction
+    - Structured JSON output
+    - Uses Groq
     """
 
     # -----------------------------
-    # 1️⃣ Lightweight Metadata
+    # 1. Lightweight Metadata
     # -----------------------------
     light_metadata = {
         "rows": metadata.get("row_count"),
@@ -27,7 +29,7 @@ def call_gemini(user_message, metadata, chat_history, pending_action=None):
     }
 
     # -----------------------------
-    # 2️⃣ Limit Chat History (last 4)
+    # 2. Limit Chat History
     # -----------------------------
     recent_history = chat_history[-4:] if chat_history else []
 
@@ -36,7 +38,7 @@ def call_gemini(user_message, metadata, chat_history, pending_action=None):
     )
 
     # -----------------------------
-    # 3️⃣ System Prompt
+    # 3. System Prompt
     # -----------------------------
     system_prompt = f"""
 You are CleanAI — a friendly, intelligent AI Data Cleaning Assistant.
@@ -61,9 +63,7 @@ IMPORTANT RULES:
    - Gently redirect them back to working on the data
    - Do NOT perform any action
 
-3) Always return STRICT JSON.
-   No markdown.
-   No explanation outside JSON.
+3) Return ONLY the requested JSON structure.
 
 Allowed actions:
 - handle_missing
@@ -77,10 +77,10 @@ Dataset Metadata:
 Pending Action:
 {json.dumps(pending_action)}
 
-Return JSON format:
+Return JSON with this structure:
 
 {{
-  "mode": "proposal" | "execute" | "modify" | "complete" | "redirect",
+  "mode": "proposal",
   "message": "Friendly response here",
   "action": {{
     "action": "function_name",
@@ -92,13 +92,30 @@ Return JSON format:
   }}
 }}
 
-If unrelated question:
+Modes:
+
+proposal:
+Suggest a cleaning operation and wait for confirmation.
+
+execute:
+Execute a previously proposed operation after user confirmation.
+
+modify:
+Modify a pending operation based on the user's request.
+
+complete:
+No cleaning action is required. Give a short dataset-related response.
+
+redirect:
+The user asked something unrelated to dataset cleaning.
+
+If unrelated:
 {{
   "mode": "redirect",
   "message": "Friendly redirection message"
 }}
 
-If nothing to do:
+If nothing needs to be done:
 {{
   "mode": "complete",
   "message": "Friendly dataset summary"
@@ -112,47 +129,56 @@ If nothing to do:
     )
 
     # -----------------------------
-    # 4️⃣ Gemini Call
+    # 4. GPT-OSS 120B Call
     # -----------------------------
     try:
-        response = model.generate_content(
-            full_prompt,
-            generation_config={
-                "max_output_tokens": 500,
-                "temperature": 0.1,   # Lower = more structured
-                "top_p": 0.8,
-            },
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Conversation:\n{conversation}\n\n"
+                        f"User: {user_message}"
+                    )
+                }
+            ],
+            temperature=0.1,
+            max_tokens=500,
+            response_format={
+                "type": "json_object"
+            }
         )
 
-        full_text = response.text.strip()
+        full_text = response.choices[0].message.content.strip()
 
     except Exception as e:
         return {
             "mode": "error",
-            "message": f"Gemini API error: {str(e)}"
+            "message": f"AI API error: {str(e)}"
         }
 
     # -----------------------------
-    # 5️⃣ Robust JSON Extraction
+    # 5. Parse JSON
     # -----------------------------
     try:
-        # Remove markdown wrapping if present
-        cleaned = full_text.replace("```json", "").replace("```", "").strip()
+        cleaned = (
+            full_text
+            .replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
 
-        # Find first JSON object manually
-        start = cleaned.find("{")
-        end = cleaned.rfind("}") + 1
-
-        if start == -1 or end == -1:
-            raise ValueError("No JSON found")
-
-        json_block = cleaned[start:end]
-
-        return json.loads(json_block)
+        return json.loads(cleaned)
 
     except Exception as e:
         print("JSON PARSE ERROR:", e)
         print("RAW RESPONSE:", full_text)
+
         return {
             "mode": "error",
             "message": "Model returned invalid JSON."
