@@ -1,0 +1,68 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs and temporary files
+*.log
+*.tmp
+temp/
+tmp/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Node.js and frontend build output
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+
+# Electron and packaging output
+release/
+*.spec
+*.exe
+*.msi
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local datasets and generated exports
+# Keep test_data/ tracked if it contains your project's test fixtures.
+*.xlsx
+*.xlsm
+*.csv
+*.tsv
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
