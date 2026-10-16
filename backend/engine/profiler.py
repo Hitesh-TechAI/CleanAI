@@ -1,5 +1,6 @@
 import pandas as pd
 import math
+import numpy as np
 
 WEIGHTS = {"completeness": 0.40, "uniqueness": 0.20, "consistency": 0.25, "validity": 0.15}
 
@@ -23,19 +24,43 @@ def _kind(s: pd.Series) -> str:
 
 def _numeric_stats(s: pd.Series) -> dict:
     v = s.dropna().astype("float64")
+
+    # Count infinity before excluding non-finite values.
+    infinite = int(np.isinf(v.to_numpy()).sum())
+
+    # Only finite values are safe for statistical calculations.
+    v = v[np.isfinite(v)]
+
     if v.empty:
-        return {"min": None, "max": None, "mean": None, "median": None, "std": None, "outliers": 0}
+        return {
+            "min": None,
+            "max": None,
+            "mean": None,
+            "median": None,
+            "std": None,
+            "outliers": 0,
+            "infinite": infinite,
+        }
+
     outliers = 0
     if len(v) >= 4:
         q1, q3 = v.quantile(0.25), v.quantile(0.75)
         iqr = q3 - q1
         if iqr > 0:
-            outliers = int(((v < q1 - 1.5 * iqr) | (v > q3 + 1.5 * iqr)).sum())
-    return {
-        "min": _f(v.min()), "max": _f(v.max()), "mean": _f(v.mean()),
-        "median": _f(v.median()), "std": _f(v.std()), "outliers": outliers,
-    }
+            outliers = int(
+                ((v < q1 - 1.5 * iqr) |
+                 (v > q3 + 1.5 * iqr)).sum()
+            )
 
+    return {
+        "min": _f(v.min()),
+        "max": _f(v.max()),
+        "mean": _f(v.mean()),
+        "median": _f(v.median()),
+        "std": _f(v.std()),
+        "outliers": outliers,
+        "infinite": infinite,
+    }
 
 def _text_stats(s: pd.Series) -> dict:
     t = s.dropna().astype("string")
@@ -71,7 +96,7 @@ def profile(df: pd.DataFrame) -> dict:
         if kind == "numeric":
             st = _numeric_stats(s)
             info.update(st)
-            outlier_cells += st["outliers"]
+            outlier_cells += st["outliers"] + st["infinite"]
             numeric_cells += int(s.notna().sum())
         elif kind == "datetime":
             nn = s.dropna()
