@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import warnings
 import pytest
 from engine.ops import apply, OpError
 from engine.history import History
@@ -161,3 +162,16 @@ def test_full_chain_undo_redo():
     for i in range(1, 7):
         h.redo()
         pd.testing.assert_frame_equal(h.df, states[i])
+
+def test_fill_mean_ignores_inf_no_warning():
+    d = pd.DataFrame({"a": [1.0, 3.0, float("inf"), float("-inf"), None]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out, _ = apply(d, {"op": "fill_nulls", "column": "a", "strategy": "mean"})
+    assert out["a"].iloc[4] == 2.0
+
+
+def test_fill_mean_only_inf_fails():
+    d = pd.DataFrame({"a": [float("inf"), None]})
+    with pytest.raises(OpError):
+        apply(d, {"op": "fill_nulls", "column": "a", "strategy": "mean"})

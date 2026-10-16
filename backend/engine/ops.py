@@ -1,4 +1,5 @@
 import operator
+import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 from .schema import parse_op, OpResult
@@ -22,9 +23,12 @@ def _fill_nulls(df, op):
     if op.strategy in ("mean", "median"):
         if not pd.api.types.is_numeric_dtype(s):
             raise OpError(f"'{op.strategy}' needs a numeric column; '{op.column}' is {s.dtype}.")
-        fill = s.mean() if op.strategy == "mean" else s.median()
-        if pd.isna(fill):
-            raise OpError(f"Column '{op.column}' is entirely null; cannot compute {op.strategy}.")
+        vals = s.dropna().astype("float64")
+        vals = vals[np.isfinite(vals)]
+        if vals.empty:
+            raise OpError(f"Column '{op.column}' has no finite values; cannot compute {op.strategy}.")
+        fill = vals.mean() if op.strategy == "mean" else vals.median()
+        
     elif op.strategy == "mode":
         m = s.mode(dropna=True)
         if m.empty:
