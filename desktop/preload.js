@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld("cleanai", {
     ipcRenderer.invoke("api", { method, path, body }),
   selftest: () => ipcRenderer.invoke("selftest"),
   pickOpen: () => ipcRenderer.invoke("pick-open"),
-  pickSave: (name) => ipcRenderer.invoke("pick-save", name),
+  pickSave: (name, preferCsv) =>
+    ipcRenderer.invoke("pick-save", name, preferCsv),
 });

@@ -160,13 +160,14 @@ ipcMain.handle("pick-open", async () => {
   return r.canceled ? null : r.filePaths[0];
 });
 
-ipcMain.handle("pick-save", async (_e, name) => {
+ipcMain.handle("pick-save", async (_e, name, preferCsv) => {
+  const f = [
+    { name: "Excel", extensions: ["xlsx"] },
+    { name: "CSV", extensions: ["csv"] },
+  ];
   const r = await dialog.showSaveDialog({
     defaultPath: String(name || "cleaned"),
-    filters: [
-      { name: "Excel", extensions: ["xlsx"] },
-      { name: "CSV", extensions: ["csv"] },
-    ],
+    filters: preferCsv ? f.reverse() : f,
   });
   return r.canceled ? null : r.filePath;
 });

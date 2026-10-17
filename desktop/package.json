@@ -10,6 +10,7 @@
   "build": {
     "appId": "com.cleanai.app",
     "productName": "CleanAI",
+    "artifactName": "CleanAI-Setup-${version}.${ext}",
     "files": [
       "main.js",
       "preload.js",
@@ -24,6 +25,11 @@
     ],
     "win": {
       "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

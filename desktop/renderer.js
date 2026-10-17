@@ -12,6 +12,8 @@ const S = {
   opName: "fill_nulls",
   pending: null,
   busy: false,
+  plan: null,
+  cmd: "",
 };
 
 // ---------- helpers (all values go in as text nodes: no HTML injection) ----------
@@ -32,13 +34,15 @@ async function api(method, path, body) {
   const r = await window.cleanai.api(method, path, body);
   if (r.status >= 400) {
     const d = r.data && r.data.detail;
-    throw new Error(
+    const e = new Error(
       typeof d === "string"
         ? d
         : d
         ? JSON.stringify(d)
         : `Request failed (${r.status})`
     );
+    e.status = r.status;
+    throw e;
   }
   return r.data;
 }
@@ -154,6 +158,7 @@ function renderGrid(prev) {
 
 const TABS = [
   ["suggestions", "Suggestions"],
+  ["ask", "Ask AI"],
   ["step", "Add step"],
   ["profile", "Profile"],
   ["history", "History"],
@@ -185,12 +190,145 @@ function renderPanel() {
   p.append(
     {
       suggestions: suggestionsPanel,
+      ask: askPanel,
       step: stepPanel,
       profile: profilePanel,
       history: historyPanel,
       report: reportPanel,
     }[S.tab]()
   );
+}
+
+function askPanel() {
+  const model = h("input", {
+    type: "text",
+    value: localStorage.getItem("cleanai_model") || "qwen2.5-coder:3b",
+  });
+  const cmd = h(
+    "textarea",
+    {
+      rows: 3,
+      placeholder: "e.g. remove rows where age is blank",
+      style:
+        "width:100%;background:#14161a;color:#e6e6e6;border:1px solid #444;border-radius:4px;padding:6px",
+    },
+    S.cmd
+  );
+  const status = h("div", { class: "muted" }, "Checking Ollama…");
+  const check = async () => {
+    try {
+      const st = await api(
+        "GET",
+        "/llm/status?model=" + encodeURIComponent(model.value)
+      );
+      status.textContent = !st.available
+        ? "Ollama is not running. Install it from ollama.com and start it."
+        : !st.model_installed
+        ? `Model not installed. In a terminal run: ollama pull ${model.value}`
+        : "Ready.";
+    } catch (e) {
+      status.textContent = e.message;
+    }
+  };
+  check();
+  model.addEventListener("change", check);
+  const ask = h(
+    "button",
+    {
+      onclick: () =>
+        guard(async () => {
+          S.cmd = cmd.value;
+          localStorage.setItem("cleanai_model", model.value);
+          setStatus("Thinking… this can take up to a minute on a slow CPU.");
+          S.plan = await api("POST", `/sessions/${S.sid}/llm/interpret`, {
+            command: S.cmd,
+            model: model.value,
+          });
+          renderPanel();
+          setStatus(
+            S.plan.ops.length
+              ? "Review the plan, then apply it."
+              : "No steps proposed."
+          );
+        }),
+    },
+    "Ask"
+  );
+  const plan =
+    S.plan &&
+    h(
+      "div",
+      {},
+      h("p", {}, S.plan.explanation),
+      S.plan.previews.map((p, i) =>
+        h(
+          "div",
+          { class: "card" },
+          `${i + 1}. `,
+          h("code", {}, opText(p.op)),
+          h(
+            "div",
+            { class: "muted" },
+            `${p.message} Rows ${p.rows_before} → ${p.rows_after}.`
+          )
+        )
+      ),
+      S.plan.ops.length
+        ? h(
+            "div",
+            { class: "row" },
+            h(
+              "button",
+              { onclick: applyPlan },
+              `Apply ${S.plan.ops.length} step(s)`
+            ),
+            h(
+              "button",
+              {
+                onclick: () => {
+                  S.plan = null;
+                  renderPanel();
+                },
+              },
+              "Discard"
+            )
+          )
+        : null
+    );
+  return h(
+    "div",
+    {},
+    h(
+      "label",
+      { class: "field" },
+      h("span", {}, "model (runs locally via Ollama)"),
+      model
+    ),
+    status,
+    h("div", { style: "height:8px" }),
+    cmd,
+    h("div", { style: "height:6px" }),
+    ask,
+    h("div", { style: "height:10px" }),
+    plan
+  );
+}
+
+async function applyPlan() {
+  await guard(async () => {
+    const ops = S.plan.ops;
+    S.plan = null;
+    let n = 0;
+    try {
+      for (const op of ops) {
+        await api("POST", `/sessions/${S.sid}/apply`, { op });
+        n++;
+      }
+    } finally {
+      await refresh();
+    }
+    setStatus(`Applied ${n} AI step(s). Undo reverts them one by one.`);
+  });
 }
 
 function suggestionsPanel() {
@@ -474,7 +612,7 @@ async function applyOp(op) {
   await guard(async () => {
     const r = await api("POST", `/sessions/${S.sid}/apply`, { op });
     await refresh();
-    setStatus(r.result.message);
+    setStatus(`${r.result.message} (memory ${r.state.process_mb} MB)`);
   });
 }
 
@@ -517,7 +655,15 @@ $("load").onclick = () =>
     const body = { path: S.pending, all_text: $("alltext").checked };
     const sel = $("sheet");
     if (sel.options.length) body.sheet = sel.value;
-    const d = await api("POST", "/load", body);
+
+    let d;
+    try {
+      d = await api("POST", "/load", body);
+    } catch (e) {
+      if (e.status !== 413 || !confirm(e.message + "\n\nLoad anyway?")) throw e;
+      d = await api("POST", "/load", { ...body, force: true });
+    }
+
     if (S.sid) {
       try {
         await api("DELETE", "/sessions/" + S.sid);
@@ -530,6 +676,7 @@ $("load").onclick = () =>
       offset: 0,
       tab: "suggestions",
       pending: null,
+      plan: null,
     });
     $("importbox").hidden = true;
     await refresh();
@@ -560,7 +707,8 @@ $("reset").onclick = () =>
 $("export").onclick = () =>
   guard(async () => {
     const p = await window.cleanai.pickSave(
-      S.filename.replace(/\.[^.]+$/, "") + "_clean"
+      S.filename.replace(/\.[^.]+$/, "") + "_clean",
+      S.state.rows > 200000
     );
     if (!p) return;
     const r = await api("POST", `/sessions/${S.sid}/export`, { path: p });
